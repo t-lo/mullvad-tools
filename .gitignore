@@ -1,0 +1,13 @@
+# secrets file
+.env
+
+# tunnel helper script
+tunnel.sh
+
+# ephemeral mullvad info, created when testing entry.sh locally
+my_ips.txt
+peers.json
+peersv2.json
+
+# editor boo-boos
+.*.swp

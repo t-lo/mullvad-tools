@@ -1,0 +1,89 @@
+#!/bin/bash
+# vim: ts=2 sw=2 et
+
+
+set -euo pipefail
+scriptdir="$(cd "$(dirname "$0")"; pwd;)"
+
+secrets="${scriptdir}/.env"
+if [[ ! -f "${secrets}" ]] ; then
+  echo "Mullvad settings not found at '${secrets}'"
+  exit 1
+fi
+source "${secrets}"
+
+function usage() {
+  echo "Usage:"
+  echo
+  echo "  $0 <device number> [--peer <peer>] [--port <port>] --hostroutes -- <command> [<args ...>]"
+  echo "    Run a command through the mullvad VPN using wireguard device <device number> (from .env)."
+  echo "    Optional arguments:"
+  echo "      --peer <peer> - use custom  <peer> server."
+  echo "                       Can be given as <peer>,<peer> for a multihop VPN connection."
+  echo "                       Defaults to <device number>'s peer from .env."
+  echo "      --port <port> - use custom <port> to connect to peer."
+  echo "                       Note that this is ignored for multihop VPNs as these use pre-defined ports."
+  echo "                       Defaults to <device number>'s port from .env."
+  echo "      --hostroutes  - Add routes to host networks to the container."
+  echo "                       This allows direct connections from within the container to"
+  echo "                       (usually private) networks the host is connected to."
+  echo "                       Not required for basic commands but helpful for advanced usage"
+  echo "                       like host network tunneling into the VPN."
+  echo "    Anything following '--' is interpreted as command and arguments."
+  echo
+  echo "  $0 help" 
+  echo "    Print this help."
+  echo
+}
+# --
+
+dev=""
+peer=""
+port=""
+hostnets=""
+while [[ -n "${1:-}" && "${1:-}" != "--" ]] ; do
+  case "${1:-}" in
+    1|2|3|4|5)
+      dev="${1}"
+      [[ -n "${peer}" ]] || peer="${devices[${dev},"peer"]}"
+      [[ -n "${port}" ]] || port="${devices[${dev},"port"]}"
+    ;;
+    --peer)
+       shift
+       peer="$1";;
+    --port)
+       shift
+       port="$1";;
+    --hostroutes)
+       hostnets="$(ip -j r s \
+                   |  jq -j -r '.[] | select(.dst!="default") | .dst + ","')"
+       ;;
+    help|h|--help|-h)
+      usage
+      exit;;
+  esac
+  shift
+done
+
+if [[ -z "${dev}" ]] || [[ "${1:-}" != "--" ]] ; then
+  echo "ERROR parsing command line."
+  usage
+  exit 1
+fi
+shift # "--"
+
+user="$(id -u)"
+group="$(id -g)"
+
+docker run -ti \
+           --rm \
+           --privileged \
+           --name "mullcmd-${dev}" \
+           -v "${secrets}:/opt/mullvad/.env" \
+           -v "$(pwd):/hostdir" \
+           --env "env_host_networks=${hostnets}" \
+           --env "env_uid=$user" \
+           --env "env_gid=$group" \
+           --env "env_dev=$dev" \
+           --env "env_peer=${peer}:${port}" \
+           mullvad "${@}"
