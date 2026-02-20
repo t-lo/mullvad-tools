@@ -209,6 +209,11 @@ iptables -t nat -A OUTPUT -p udp --dport 53 -j DNAT --to ${wg_gw_dns}
 iptables -t nat -A OUTPUT -p tcp --dport 53 -j DNAT --to ${wg_gw_dns}
 
 set +x
+echo
+echo "### The tunnel is up."
+echo
+echo "Go to https://mullvad.net/en/check to verify."
+echo
 read -p "Press RETURN to stop tunneling."
 set -x
 
@@ -281,7 +286,7 @@ function _update_routes() {
   echo
   echo "###  Updating container routes"
 
-  if ! ping -c 1 -i 1 -W 1 -w 1 -q "${orig_gw}" >/dev/null ; then
+  if ! ping -c 1 -W 1 -w 1 -q "${orig_gw}" >/dev/null ; then
     echo "ERROR Unable to detect / ping container's default gateway '${orig_gw}'"
     return 1
   fi
@@ -315,6 +320,13 @@ function _set_wg_route_dns() {
   echo "### Setting new default route and nameserver '${wg_gw_and_dns}'"
   ip r a default via "${wg_gw_and_dns}"
   echo "nameserver ${wg_gw_and_dns}" > "/etc/resolv.conf"
+
+  echo -n "    Waiting for gateway '${wg_gw_and_dns}' to become available:."
+  while ! ping -c1 -w1 -W1 -i 0.5 "${wg_gw_and_dns}" >/dev/null; do
+    echo -n "."
+    sleep 0.5  # this allows CTRL+C to break the loop
+  done
+  echo " OK."
 }
 # --
 
