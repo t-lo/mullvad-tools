@@ -12,6 +12,7 @@ hostdir="/hostdir"
 
 mvd_peers_db="${scriptdir}/peers.json"
 mvd_peers_dbv2="${scriptdir}/peersv2.json"
+mvd_status="${scriptdir}/vpn_status.json"
 my_ips_file="${scriptdir}/my_ips.txt"
 
 mvd_devices="${scriptdir}/devices.json"
@@ -23,6 +24,12 @@ secrets="${scriptdir}/.env"
 # - https://gist.github.com/t-lo/e80c8aa082386954cff807e6c33adedc
 # - https://api.mullvad.net/app/documentation/
 # - https://api.mullvad.net/public/documentation/
+
+function _get_public_ip4() {
+    curl -sSL http://ip6.me/api/ \
+        | awk -F, '/^IPv4/ {print $2}'
+}
+# --
 
 function _mvd_fetch_peers() {
   curl -SsL 'https://api.mullvad.net/public/relays/wireguard/v1/' \
@@ -47,6 +54,12 @@ function _mvd_fetch_my_ips() {
 }
 # --
 
+function _mvd_fetch_vpn_status() {
+  curl -sSL https://am.i.mullvad.net/json \
+    > "${mvd_status}"
+}
+# --
+
 # Required e.g. for deleting devices.
 # Valid for 1h.
 function _mvd_fetch_api_access_token() {
@@ -68,14 +81,6 @@ function _mvd_fetch_devices() {
 }
 # --
 
-function _mvd_device_id_from_pubkey() {
-  local pubkey="${1}"
-
-  _jq -r ".[] | select(.pubkey==\"${pubkey}\") | .id" \
-    "${mvd_devices}"
-}
-# --
-
 function _jq() {
   jq --exit-status "${@}" || {
     echo "ERROR: Exit status $? for JSON query '${@}'" >&2
@@ -84,11 +89,26 @@ function _jq() {
 }
 # --
 
+function _mvd_device_id_from_pubkey() {
+  local pubkey="${1}"
+
+  _jq -r ".[] | select(.pubkey==\"${pubkey}\") | .id" \
+    "${mvd_devices}"
+}
+# --
+
 function _mvd_get_relay_val_v1() {
   local peer_host="${1}"
   local key="${2}"
 
   _jq -r ".countries[].cities[].relays[] | select( .hostname == \"${peer_host}\") | \"\\(.${key})\"" "${mvd_peers_db}"
+}
+# --
+
+function _mvd_get_status_val() {
+  local key="${1}"
+
+  _jq -r ".${key}" "${mvd_status}"
 }
 # --
 
@@ -372,6 +392,62 @@ function _setup_vpn() {
 }
 # --
 
+function _verify_mullvad() {
+  local orig_ip="${1}"
+  local orig_org="${2}"
+  local orig_city="${3}"
+  local orig_country="${4}"
+  local peer_hosts="${5%:*}"
+  local egress_host="${peer_hosts#*,}"
+
+  local my_pub_ip
+  my_pub_ip="$(_get_public_ip4)"
+
+  echo " ### Running VPN sanity checks"
+  echo "     Original IP was ${orig_ip} hosted by ${orig_org} in ${orig_city}, ${orig_country}".
+
+  function _error() {
+    echo
+    echo "     ERROR: $@"
+    echo "     This is a potential VPN leak; shutting down now."
+    echo
+  }
+
+  if [[ "${my_pub_ip}" == "${orig_ip}" ]] ; then
+    _error "Public IP '${my_pub_ip}' is the same as public IP before VPN came up ('${orig_ip}')"
+    return 1
+  fi
+
+  _mvd_fetch_vpn_status
+  local stat_egress_host stat_egress_ip stat_is_mullvad_ip
+  stat_egress_ip="$(_mvd_get_status_val "ip")"
+  stat_egress_host="$(_mvd_get_status_val "mullvad_exit_ip_hostname")"
+  stat_is_mullvad_ip="$(_mvd_get_status_val "mullvad_exit_ip")"
+
+  if [[ "${stat_is_mullvad_ip}" != "true" ]] ; then
+    _error "Not using Mullvad VPN! (mullvad_exit_ip is '${stat_is_mullvad_ip}'"
+    return 1
+  fi
+
+  if [[ "${egress_host}" != "${stat_egress_host}" ]] ; then
+    _error "Egress host '${egress_host}' is not the Mullvad VPN egress host '${stat_egress_host}'"
+    return 1
+  fi
+
+  if [[ "${my_pub_ip}" != "${stat_egress_ip}" ]] ; then
+    _error "Public IP '${my_pub_ip}' is not the advertised Mullvad VPN exit IP '${stat_egress_ip}'"
+    return 1
+  fi
+
+  local stat_hoster stat_city stat_country
+  stat_hoster="$(_mvd_get_status_val "organization")"
+  stat_country="$(_mvd_get_status_val "country")"
+  stat_city="$(_mvd_get_status_val "city")"
+  echo "     Now using Mullvad egress ${stat_egress_host} (${my_pub_ip} == ${stat_egress_ip}) hosted by ${stat_hoster} in ${stat_city}, ${stat_country}".
+  echo
+}
+# --
+
 function _run_cmd() {
   local user group
 
@@ -437,8 +513,15 @@ case "${1:-}" in
     fi
     source "${secrets}"
 
+    _mvd_fetch_vpn_status
+    orig_ip="$(_get_public_ip4)"
+    orig_org="$(_mvd_get_status_val "organization")"
+    orig_city="$(_mvd_get_status_val "city")"
+    orig_country="$(_mvd_get_status_val "country")"
+
     _mvd_fetch_peers
     _setup_vpn "${env_dev}" "${env_peer}" "${@}"
+    _verify_mullvad "${orig_ip}" "${orig_org}" "${orig_city}" "${orig_country}" "${env_peer}"
 
     _run_cmd "${@}"
   ;;

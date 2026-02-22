@@ -93,6 +93,7 @@ docker run -ti \
            --rm \
            --privileged \
            --name "mullcmd-${dev}" \
+           --hostname "mullcmd-${dev}" \
            -v "${secrets}:/opt/mullvad/.env" \
            -v "$(pwd):/hostdir" \
            --env "env_host_networks=${hostnets}" \
