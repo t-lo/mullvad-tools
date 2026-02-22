@@ -83,7 +83,7 @@ function _mvd_fetch_devices() {
 
 function _jq() {
   jq --exit-status "${@}" || {
-    echo "ERROR: Exit status $? for JSON query '${@}'" >&2
+    echo "ERROR: Exit status $? for JSON query '${*}'" >&2
     return 1
   }
 }
@@ -188,7 +188,7 @@ function _mvd_get_my_ip6() {
 function _check_custom_port() {
   local port="$1"
 
-  while read lower upper; do
+  while read -r lower upper; do
     if [[ "$port" -ge "$lower" ]] && [[ "$port" -le "$upper" ]] ; then
       return 0
     fi
@@ -299,7 +299,7 @@ function _update_routes() {
   local mvd_peer="${1}"
   local mvd_ingress="${mvd_peer%,*}"
 
-  local wg_peer_ip4 orig_gw orig_gw_net
+  local wg_peer_ip4 orig_gw
   wg_peer_ip4="$(_mvd_get_relay_val_v1 "${mvd_ingress}" "ipv4_addr_in")"
   orig_gw="$(ip -j r s | jq -r '.[] | select(.dst=="default") | .gateway')"
 
@@ -408,7 +408,7 @@ function _verify_mullvad() {
 
   function _error() {
     echo
-    echo "     ERROR: $@"
+    echo "     ERROR: ${*}"
     echo "     This is a potential VPN leak; shutting down now."
     echo
   }
