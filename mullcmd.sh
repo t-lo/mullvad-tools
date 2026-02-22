@@ -10,6 +10,7 @@ if [[ ! -f "${secrets}" ]] ; then
   echo "Mullvad settings not found at '${secrets}'"
   exit 1
 fi
+# shellcheck source=./env.example
 source "${secrets}"
 
 function usage() {

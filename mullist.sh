@@ -2,7 +2,6 @@
 # vim: ts=2 sw=2 et
 
 set -euo pipefail
-scriptdir="$(cd "$(dirname "$0")"; pwd;)"
 
 function usage() {
   echo "Usage:"

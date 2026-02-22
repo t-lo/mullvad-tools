@@ -16,6 +16,7 @@ The container can also do simple Host traffic tunneling through the VPN, though 
 
 * `mullist.sh` - List all known Mullvad peers by country and server name.
   * `mullist.sh <server>` - Lists basic properties (IP address, key, country, city, ...) of one peer.
+
 * `mullcmd.sh <devicenum> -- <command> ...` - Run `<command>` in an ephemeral container connected to the VPN.
   The local directory (from where the command was run on the host) is mounted into the container and will be the working directory for `<command>`.
   The hosts's user and group IDs from which the container was started will be used to run the command.
@@ -24,11 +25,13 @@ The container can also do simple Host traffic tunneling through the VPN, though 
     You'll likely be an unprivileged user but you'll have password-less `sudo` access.
   * `mullcmd.sh help` - Prints detailed command help.
     The command supports a number of optional parameters, such as setting a custom peer and / or port.
+
 * `mullcmd.sh <devicenum> tunnel` - Sets up a tunnel for routing host trafficthrough the VPN.
   See "Advanced Usage" below for a detailed description of tunnel mode.
   **NOTE** that this requires you to also run a `tunnel.sh` helper script (which the command will produce) as root on the host.
 
-See below for advanced usage like host traffic tunneling through the VPN.
+`mullcmd.sh` will run a VPN health check in the background every second.
+If the check fails, the command will shut down immediately to prevent data leaks.
 
 ## Prerequisites and Set-Up
 
@@ -151,6 +154,11 @@ To stop the tunneling:
 1. Press `[RETURN]` in the container to shut it down.
 
 Once again you might experience transient DNS issues.
+
+**NOTE** that a VPN health background check will be running in the container.
+If the container shuts down because the VPN is unhealthy, the host routes will lead nowhere.
+This will cause the loss of network connectivity on the host (local networks will still work).
+Shut down any sensitive connections immediately, then press `[RETURN]` in the terminal that runs `tunnel.sh` to restore connectivity.
 
 #### Routing details
 

@@ -20,6 +20,9 @@ tunnel_helper="${scriptdir}/tunnel.sh"
 
 secrets="${scriptdir}/.env"
 
+# Make us kill-able from kill switch bg task
+trap 'exit' SIGINT
+
 # For (some) help with the APIs see
 # - https://gist.github.com/t-lo/e80c8aa082386954cff807e6c33adedc
 # - https://api.mullvad.net/app/documentation/
@@ -65,7 +68,7 @@ function _mvd_fetch_vpn_status() {
 function _mvd_fetch_api_access_token() {
   curl -sSL https://api.mullvad.net/auth/v1/token \
        --header "Content-Type: application/json" \
-       --data "{\"account_number\": \"${account_number}\"}" \
+       --data "{\"account_number\": \"${account}\"}" \
        --request POST \
     | _jq  -r '.access_token'
 }
@@ -392,6 +395,34 @@ function _setup_vpn() {
 }
 # --
 
+function _vpn_healthcheck() {
+  local egress_host="${1}"
+  _mvd_fetch_vpn_status
+  local stat_egress_host stat_egress_ip stat_is_mullvad_ip
+  stat_egress_ip="$(_mvd_get_status_val "ip")"
+  stat_egress_host="$(_mvd_get_status_val "mullvad_exit_ip_hostname")"
+  stat_is_mullvad_ip="$(_mvd_get_status_val "mullvad_exit_ip")"
+
+  local my_pub_ip
+  my_pub_ip="$(_get_public_ip4)"
+
+  if [[ "${stat_is_mullvad_ip}" != "true" ]] ; then
+    _error "Not using Mullvad VPN! (mullvad_exit_ip is '${stat_is_mullvad_ip}'"
+    return 1
+  fi
+
+  if [[ "${egress_host}" != "${stat_egress_host}" ]] ; then
+    _error "Egress host '${egress_host}' is not the Mullvad VPN egress host '${stat_egress_host}'"
+    return 1
+  fi
+
+  if [[ "${my_pub_ip}" != "${stat_egress_ip}" ]] ; then
+    _error "Public IP '${my_pub_ip}' is not the advertised Mullvad VPN exit IP '${stat_egress_ip}'"
+    return 1
+  fi
+}
+# --
+
 function _verify_mullvad() {
   local orig_ip="${1}"
   local orig_org="${2}"
@@ -418,33 +449,32 @@ function _verify_mullvad() {
     return 1
   fi
 
-  _mvd_fetch_vpn_status
-  local stat_egress_host stat_egress_ip stat_is_mullvad_ip
-  stat_egress_ip="$(_mvd_get_status_val "ip")"
-  stat_egress_host="$(_mvd_get_status_val "mullvad_exit_ip_hostname")"
-  stat_is_mullvad_ip="$(_mvd_get_status_val "mullvad_exit_ip")"
-
-  if [[ "${stat_is_mullvad_ip}" != "true" ]] ; then
-    _error "Not using Mullvad VPN! (mullvad_exit_ip is '${stat_is_mullvad_ip}'"
-    return 1
-  fi
-
-  if [[ "${egress_host}" != "${stat_egress_host}" ]] ; then
-    _error "Egress host '${egress_host}' is not the Mullvad VPN egress host '${stat_egress_host}'"
-    return 1
-  fi
-
-  if [[ "${my_pub_ip}" != "${stat_egress_ip}" ]] ; then
-    _error "Public IP '${my_pub_ip}' is not the advertised Mullvad VPN exit IP '${stat_egress_ip}'"
-    return 1
-  fi
+  _vpn_healthcheck "${egress_host}"
 
   local stat_hoster stat_city stat_country
   stat_hoster="$(_mvd_get_status_val "organization")"
   stat_country="$(_mvd_get_status_val "country")"
   stat_city="$(_mvd_get_status_val "city")"
-  echo "     Now using Mullvad egress ${stat_egress_host} (${my_pub_ip} == ${stat_egress_ip}) hosted by ${stat_hoster} in ${stat_city}, ${stat_country}".
+  echo "     Now using Mullvad egress ${egress_host} (${my_pub_ip}) hosted by ${stat_hoster} in ${stat_city}, ${stat_country}".
   echo
+}
+# --
+
+function _kill_switch() {
+  local peers="${1%:*}"
+  local egress_host="${peers#*,}"
+
+  while true; do
+    _vpn_healthcheck "${egress_host}" || break
+    sleep 1
+  done
+
+  echo -e "\r\n\r\n ############ CONNECTION COMPROMISED. Shutting down. ############"
+
+  set +e
+  mapfile pids < <(pgrep sudo)
+  echo "Killing ${pids[*]}"
+  kill -9 "${pids[@]}"
 }
 # --
 
@@ -465,6 +495,8 @@ function _run_cmd() {
 
   echo "${user} ALL=(ALL:ALL) NOPASSWD: ALL" \
     > "/etc/sudoers.d/${user}"
+
+  _kill_switch "${env_peer}" &
 
   cd "$hostdir"
   echo "### Running command(s) '${*}' as ${user}/${group} (${env_uid}/${env_gid})"
@@ -511,6 +543,7 @@ case "${1:-}" in
       echo "Mullvad settings not found at '${secrets}'"
       exit 1
     fi
+    # shellcheck source=./env.example
     source "${secrets}"
 
     _mvd_fetch_vpn_status
