@@ -10,7 +10,7 @@ This prevents file access problems.
 
 The tool aims to be (almost) as easy as running the command on the host itself, all while ensuring traffic only goes through the VPN.
 
-Host traffic tunneling can be done too, but it's not the main purpose so it's a bit hacky.
+The container can also do simple Host traffic tunneling through the VPN, though it's a bit hacky.
 
 ### Usage
 
@@ -24,6 +24,9 @@ Host traffic tunneling can be done too, but it's not the main purpose so it's a 
     You'll likely be an unprivileged user but you'll have password-less `sudo` access.
   * `mullcmd.sh help` - Prints detailed command help.
     The command supports a number of optional parameters, such as setting a custom peer and / or port.
+* `mullcmd.sh <devicenum> tunnel` - Sets up a tunnel for routing host trafficthrough the VPN.
+  See "Advanced Usage" below for a detailed description of tunnel mode.
+  **NOTE** that this requires you to also run a `tunnel.sh` helper script (which the command will produce) as root on the host.
 
 See below for advanced usage like host traffic tunneling through the VPN.
 
@@ -126,16 +129,13 @@ as these will be unknown to Mullvad's DNS server.
 You will need `sudo` or `root` access on the host for this.
 
 To set things up:
-1. Run `bash` via `mullcmd` for interactive access, and enable the host network routes feature.
+1. Run
    ```bash
-   ./mullcmd.sh 1 --hostroutes -- bash
+   ./mullcmd.sh 1 tunnel
    ```
-   (Feel free to use a different device number)
-2. In the container, copy a tunnel helper script which is generated on container start into the local directory.
-   ```bash
-   cp /opt/mullvad/tunnel.sh .
-   ```
-3. Leave the container running, and in a separate terminal _on the host_ run the `tunnel.sh` helper script as root.
+   (Feel free to use a different device number).
+   This will start the container in tunnel mode and create a helper script `tunnel.sh` in the host directory the container was started in.
+2. Leave the container running, and in a separate terminal _on the host_ run the `tunnel.sh` helper script as root.
    ```bash
    sudo ./tunnel.sh
    ```
@@ -148,7 +148,7 @@ Check via https://mullvad.net/en/check on the host whether you're tunneling succ
 To stop the tunneling:
 
 1. Press `[RETURN]` in the terminal where `tunnel.sh` is running, to clean up host routes.
-2. Exit the container shell.
+1. Press `[RETURN]` in the container to shut it down.
 
 Once again you might experience transient DNS issues.
 
