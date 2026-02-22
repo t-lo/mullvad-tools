@@ -18,6 +18,7 @@ function usage() {
   echo
   echo "  $0 <device number> [--peer <peer>] [--port <port>] --hostroutes -- <command> [<args ...>]"
   echo "    Run a command through the mullvad VPN using wireguard device <device number> (from .env)."
+  echo "     The command can be multiple commands enclosed in ' ' or \" \"".
   echo "    Optional arguments:"
   echo "      --peer <peer> - use custom  <peer> server."
   echo "                       Can be given as <peer>,<peer> for a multihop VPN connection."
