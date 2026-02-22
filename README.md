@@ -117,7 +117,10 @@ In that case, edit the `Dockerfile` (there's an `apk add ...` line there) and re
 ### Update the tools
 
 If you used `git clone` to install, updating is as simple as `git pull --rebase`.
+A comfort script `update-git.sh` is provided to try and preserve local changes via `git stash`.
 Otherwise, download the new zip file and overwrite the contents of `/opt/mullvad-tools/` with the new versions.
+
+After updating, don't forget to run `./build.sh` to rebuild the container image.
 
 ## Advanced usage: Tunnel all host traffic
 
