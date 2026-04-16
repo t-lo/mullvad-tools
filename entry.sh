@@ -556,6 +556,14 @@ case "${1:-}" in
     _setup_vpn "${env_dev}" "${env_peer}" "${@}"
     _verify_mullvad "${orig_ip}" "${orig_org}" "${orig_city}" "${orig_country}" "${env_peer}"
 
+    route="$(echo "${env_peer}" | sed -e 's/,/ ==> /' -e 's/^/[local] ==> /' -e 's/\(:.*\)*$/ ==> [internet]/')"
+    echo "     ========================================="
+    echo "           The VPN is up and running."
+    echo "             Device: ${env_dev}"
+    echo "             Route:  ${route}"
+    echo "     ========================================="
+    echo
+
     _run_cmd "${@}"
   ;;
 esac
