@@ -22,6 +22,8 @@ function usage() {
   echo "    Optional arguments:"
   echo "      --peer <peer> - use custom  <peer> server."
   echo "                       Can be given as <peer>,<peer> for a multihop VPN connection."
+  echo "                       Using 'random' will pick a random peer"
+  echo "                        (can also be given as 'random,random' for multihop)."
   echo "                       Defaults to <device number>'s peer from .env."
   echo "      --port <port> - use custom <port> to connect to peer."
   echo "                       Note that this is ignored for multihop VPNs as these use pre-defined ports."

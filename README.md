@@ -30,6 +30,11 @@ The hosts's user and group IDs from which the container was started will be used
 Any output in the host mount will therefore "belong" to the user who started the container.
 * E.g. **`mullcmd.sh <devicenum> -- bash`** - Runs an interactive shell in the container.
   You'll likely be an unprivileged user but you'll have password-less `sudo` access.
+* **`mullcmd.sh <devicenum> --peer <peer> ...`** - explicitly specify a mullvad peer host (see `mullist.sh` above`).
+  * Multi-hop VPNs are supported via `--peer <ingress>,<egress>`
+  * Peers can be randomly chosen by use of the special `random` peer: `--peer random`.
+    This also works for multihop: `-peer random,random`.
+    Preferred random peer countries can be set in .env.
 * **`mullcmd.sh help`** - Prints detailed command help.
   The command supports a number of optional parameters, such as setting a custom peer and / or port.
 

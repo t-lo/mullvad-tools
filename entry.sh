@@ -1,5 +1,5 @@
 #!/bin/bash
-# vim: ts=2 sw=2 et
+# vim: ts=2 sw=2 et syn=bash
 
 # test with
 # docker run --rm -ti --privileged -v "$(pwd)":/hostdir alpine
@@ -208,6 +208,36 @@ function _check_custom_port() {
 }
 # --
 
+function _handle_random() {
+  local host="${1%:*}"
+  local preferred="${2:-true}"
+
+  if [[ ${host} =~ .*,.* ]] ; then
+    local i="$(_handle_random "${host%,*}")"
+    local e="$(_handle_random "${host#*,}" "false")"
+    echo "$i,$e"
+    return
+  fi
+
+  if [[ "${host}" != "random" ]] ; then
+    echo "$1"
+    return
+  fi
+
+  local filter=".*"
+  if [[ "$preferred" == "true" ]] ; then
+    filter="$(echo "${preferred_random_peers[@]}" | sed 's/ /|/g')"
+  fi
+
+  local lines pick rand_host
+  lines="$(_list | grep -E "^($filter)"| wc -l)"
+  pick="$(( ( $RANDOM % $lines ) + 1 ))"
+  rand_host="$(_list | grep -E "^($filter)" | head -n "$pick" | tail -n 1 | sed 's/.*: //')"
+
+  echo "${rand_host}"
+}
+# --
+
 function _create_tunnel_helper() {
   local wg_peer_ip="${1}"
   local my_docker_ip wg_gw_dns
@@ -356,9 +386,8 @@ function _set_wg_route_dns() {
 function _setup_vpn() {
   local mvd_dev="${1}"
   local mvd_peer="${2%:*}"
-  local wg_conf="${mvd_peer}"
 
-  _check_peer "${mvd_peer}"
+  local wg_conf="${mvd_peer}"
 
   if [[ ${mvd_peer} =~ .*,.* ]] ; then
     # multihop peer name (<ingress>,<egress>)
@@ -366,6 +395,8 @@ function _setup_vpn() {
     local e="${mvd_peer#*,}"
     wg_conf="${i%-*-*}--${e%-*-*}"
   fi
+
+  _check_peer "${mvd_peer}"
 
   local pubkey="${devices[$mvd_dev,"pub"]}"
 
@@ -479,6 +510,9 @@ function _kill_switch() {
 # --
 
 function _run_cmd() {
+  local peer="$1"
+  shift
+
   local user group
 
   group="$(getent group "${env_gid}" | sed 's/:.*//g')" \
@@ -496,7 +530,7 @@ function _run_cmd() {
   echo "${user} ALL=(ALL:ALL) NOPASSWD: ALL" \
     > "/etc/sudoers.d/${user}"
 
-  _kill_switch "${env_peer}" &
+  _kill_switch "${peer}" &
 
   cd "$hostdir"
   echo "### Running command(s) '${*}' as ${user}/${group} (${env_uid}/${env_gid})"
@@ -553,10 +587,11 @@ case "${1:-}" in
     orig_country="$(_mvd_get_status_val "country")"
 
     _mvd_fetch_peers
-    _setup_vpn "${env_dev}" "${env_peer}" "${@}"
-    _verify_mullvad "${orig_ip}" "${orig_org}" "${orig_city}" "${orig_country}" "${env_peer}"
+    peer="$(_handle_random "${env_peer}")"
+    _setup_vpn "${env_dev}" "${peer}" "${@}"
+    _verify_mullvad "${orig_ip}" "${orig_org}" "${orig_city}" "${orig_country}" "${peer}"
 
-    route="$(echo "${env_peer}" | sed -e 's/,/ ==> /' -e 's/^/[local] ==> /' -e 's/\(:.*\)*$/ ==> [internet]/')"
+    route="$(echo "${peer}" | sed -e 's/,/ ==> /' -e 's/^/[local] ==> /' -e 's/\(:.*\)*$/ ==> [internet]/')"
     echo "     ========================================="
     echo "           The VPN is up and running."
     echo "             Device: ${env_dev}"
@@ -564,6 +599,6 @@ case "${1:-}" in
     echo "     ========================================="
     echo
 
-    _run_cmd "${@}"
+    _run_cmd "${peer}" "${@}"
   ;;
 esac
