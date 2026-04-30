@@ -26,6 +26,7 @@ function usage() {
   echo "      --port <port> - use custom <port> to connect to peer."
   echo "                       Note that this is ignored for multihop VPNs as these use pre-defined ports."
   echo "                       Defaults to <device number>'s port from .env."
+  echo "      --notty       - Do not run docker on a TTY. Useful for running in the background."
   echo "      --hostroutes  - Add routes to host networks to the container."
   echo "                       This allows direct connections from within the container to"
   echo "                       (usually private) networks the host is connected to."
@@ -48,6 +49,7 @@ dev=""
 peer=""
 port=""
 hostnets=""
+tty="-t"
 
 while [[ -n "${1:-}" && "${1:-}" != "--" ]] ; do
   case "${1:-}" in
@@ -62,6 +64,8 @@ while [[ -n "${1:-}" && "${1:-}" != "--" ]] ; do
     --port)
        shift
        port="$1";;
+    --notty)
+       tty="";;
     tunnel)
        set -- "--tunnel" "--" \
               'cp /opt/mullvad/tunnel.sh .;' \
@@ -91,7 +95,8 @@ shift # "--"
 user="$(id -u)"
 group="$(id -g)"
 
-docker run -ti \
+exec docker run -i \
+           $tty \
            --rm \
            --privileged \
            --name "mullcmd-${dev}" \
