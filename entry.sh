@@ -23,25 +23,32 @@ secrets="${scriptdir}/.env"
 # Make us kill-able from kill switch bg task
 trap 'exit' SIGINT
 
+_curl=( "curl" "-sSL"
+              "--retry-delay" "1"
+              "--retry" "60"
+              "--retry-connrefused"
+              "--retry-max-time" "60"
+              "--connect-timeout" "20" )
+
 # For (some) help with the APIs see
 # - https://gist.github.com/t-lo/e80c8aa082386954cff807e6c33adedc
 # - https://api.mullvad.net/app/documentation/
 # - https://api.mullvad.net/public/documentation/
 
 function _get_public_ip4() {
-    curl -sSL http://ip6.me/api/ \
+    "${_curl[@]}" http://ip6.me/api/ \
         | awk -F, '/^IPv4/ {print $2}'
 }
 # --
 
 function _mvd_fetch_peers() {
-  curl -SsL 'https://api.mullvad.net/public/relays/wireguard/v1/' \
+  "${_curl[@]}" 'https://api.mullvad.net/public/relays/wireguard/v1/' \
 	> "${mvd_peers_db}"
 
   # V2 is structured differently and has some info v1 does not, like
   #  supported peer port ranges and dns / gw IPs.
   #  However, as of now it lacks multihop port information.
-  curl -SsL 'https://api.mullvad.net/public/relays/wireguard/v2/' \
+  "${_curl[@]}" 'https://api.mullvad.net/public/relays/wireguard/v2/' \
 	> "${mvd_peers_dbv2}"
 }
 # --
@@ -50,7 +57,7 @@ function _mvd_fetch_my_ips() {
   local account="$1"
   local pubkey="$2"
 
-  curl -sSL https://api.mullvad.net/wg/ \
+  "${_curl[@]}" https://api.mullvad.net/wg/ \
        -d account="${account}" \
        --data-urlencode pubkey="${pubkey}" \
 	> "${my_ips_file}"
@@ -58,7 +65,7 @@ function _mvd_fetch_my_ips() {
 # --
 
 function _mvd_fetch_vpn_status() {
-  curl -sSL https://am.i.mullvad.net/json \
+  "${_curl[@]}" https://am.i.mullvad.net/json \
     > "${mvd_status}"
 }
 # --
@@ -66,7 +73,7 @@ function _mvd_fetch_vpn_status() {
 # Required e.g. for deleting devices.
 # Valid for 1h.
 function _mvd_fetch_api_access_token() {
-  curl -sSL https://api.mullvad.net/auth/v1/token \
+  "${_curl[@]}" https://api.mullvad.net/auth/v1/token \
        --header "Content-Type: application/json" \
        --data "{\"account_number\": \"${account}\"}" \
        --request POST \
@@ -76,7 +83,7 @@ function _mvd_fetch_api_access_token() {
 
 function _mvd_fetch_devices() {
   local token="${1}"
-  curl -sSL https://api.mullvad.net/accounts/v1/devices \
+  "${_curl[@]}" https://api.mullvad.net/accounts/v1/devices \
     --header "Content-Type: application/json" \
     --header "Authorization: Bearer ${token}" \
     --request GET \
@@ -344,8 +351,18 @@ function _update_routes() {
     return 1
   fi
 
-  echo "   Removing default route via '${orig_gw}' and setting explicit route to '${wg_peer_ip4}' (peer '${mvd_ingress}')"
-  ip r d default
+  echo "   Removing routes."
+  local line
+  ip r l default | while read line; do
+    echo "     -> $line"
+    ip r d ${line}
+  done
+  ip -6 r l | while read line; do
+    echo "     -> $line"
+    ip -6 r d ${line}
+  done
+
+  echo "   Setting explicit route to '${wg_peer_ip4}' (peer '${mvd_ingress}')"
   ip r a "${wg_peer_ip4}/32" via "${orig_gw}"
 
   if [[ -n "${env_host_networks}" ]] ; then
@@ -422,6 +439,8 @@ function _setup_vpn() {
   echo
   echo "### Final route settings"
   ip r | sed 's/^/    /'
+  echo " -- IPv6 route settings"
+  ip -6 r | sed 's/^/    /'
   echo
 }
 # --
