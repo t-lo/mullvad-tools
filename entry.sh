@@ -242,7 +242,7 @@ function _create_tunnel_helper() {
   local wg_peer_ip="${1}"
   local my_docker_ip wg_gw_dns
   my_docker_ip="$(ip -j a s \
-                  | _jq -r '.[] | select(.ifname=="eth0") | .addr_info[].local')"
+                  | _jq -r '.[] | select(.ifname=="eth0") | .addr_info[0].local')"
   wg_gw_dns="$(_mvd_get_gw_ip4)"
 
   cat <<EOF
